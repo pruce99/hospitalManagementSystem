@@ -20,4 +20,3 @@ services:
       - pg_db
 volumes:
   pg_volume:
-    external: true
