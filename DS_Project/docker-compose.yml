@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  pg_db:
+    image: postgres:14.2
+    environment:
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - pg_volume:/pgdata
+    ports:
+      - "5432:5432"
+  web:
+    build:
+      context: .
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - pg_db
+volumes:
+  pg_volume:
+    external: true
