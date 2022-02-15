@@ -17,17 +17,17 @@ export default function FormComponent() {
 
   const handleChange = (event) => {
     event.preventDefault();
-    let objectMap = new Map();
-    objectMap.set("first_name", firstName);
-    objectMap.set("last_name", lastName);
-    objectMap.set("age", age);
-    objectMap.set("phone_number", phoneNumber);
-    objectMap.set("email", email);
-    objectMap.set("dep", dep);
-    objectMap.set("gender", gender);
+    let objectMap = {};
+    objectMap["first_name"] = firstName
+    objectMap["last_name"] = lastName
+    objectMap["age"] = age
+    objectMap["phone_number"] = phoneNumber
+    objectMap["email"] = email
+    objectMap["department"] = dep
+    objectMap["gender"] = gender
 
     axios.post(`http://localhost:8000/MainApp/patient_info/`,objectMap).then((res) => {
-      console.log(res.data.id)
+      console.log(res.data)
     });
   };
 
