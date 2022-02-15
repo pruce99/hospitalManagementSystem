@@ -9,7 +9,7 @@ services:
       - pg_volume:/pgdata
     ports:
       - "5432:5432"
-  web:
+  backend:
     build:
       context: .
     volumes:
@@ -18,5 +18,16 @@ services:
       - "8000:8000"
     depends_on:
       - pg_db
+
+  frontend:
+    build:
+      context: ../../dsfrontend/
+    volumes:
+      - .:/frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
 volumes:
   pg_volume:
