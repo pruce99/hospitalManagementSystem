@@ -27,7 +27,7 @@ export default function FormComponent() {
     objectMap["gender"] = gender
 
     axios.post(`http://localhost:8000/MainApp/patient_info/`,objectMap).then((res) => {
-      console.log(res.data)
+      window.alert("Sucessfully done")
     });
   };
 
