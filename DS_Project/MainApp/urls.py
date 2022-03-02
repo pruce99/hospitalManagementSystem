@@ -9,10 +9,10 @@ from rest_framework import routers
 
 # set default router and register all api end-points here
 router = routers.DefaultRouter()
-router.register(r'patient_info', views.PatientInformationViewSet)
+router.register(r'store_patient_info', views.PatientInformationViewSet)
 
 # Enable automatic URL routing for our API
 urlpatterns = [
-    # path('', views.TestView.as_view(), name='TestView'),
-    path('', include(router.urls))
+    path('', include(router.urls)),
+    path('patient_info/', views.Leader.as_view()),
 ]
