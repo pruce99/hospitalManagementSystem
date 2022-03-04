@@ -80,14 +80,12 @@ WSGI_APPLICATION = 'DS_Project.wsgi.application'
 
 DATABASES = {
     'default': {
-        # 'ENGINE': 'django.db.backends.postgresql',
-        # 'NAME': 'postgres',  # database name
-        # 'USER': 'postgres',
-        # 'PASSWORD': 'password',
-        # 'HOST': 'pg_db',
-        # 'PORT': '5432',
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'postgres',  # database name
+        'USER': 'postgres',
+        'PASSWORD': 'password',
+        'HOST': os.environ['DB_HOST_NAME'],
+        'PORT': '5432',
     }
 }
 
@@ -137,9 +135,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # to enable CORS
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "http://backend:8000",
-    "http://backend_other_2:8001",
-    "http://backend_other_1:8002",
 ]
 
 CORS_ALLOW_METHODS = [
