@@ -49,7 +49,7 @@ services:
     networks:
       - backend_network
       - backends_connector_network
-      - frontend_backend_network  # REMOVE THIS NETWORK AND ADD TO ANOTHER NODE TO CHANGE LEADER NODE
+      - frontend_backend_network
 
   backend1:
     environment:
@@ -82,8 +82,6 @@ services:
       - backends_connector_network
 
   frontend:
-    environment:
-      - LeaderNode=8000 
     build:
       context: ../../dsfrontend/
     volumes:
