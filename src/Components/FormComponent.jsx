@@ -15,6 +15,8 @@ export default function FormComponent() {
   const [email, getEmail] = useState("");
   const [dep, getDep] = useState("Department");
 
+
+
   const handleChange = (event) => {
     event.preventDefault();
     let objectMap = {};
@@ -87,9 +89,6 @@ export default function FormComponent() {
                 </Dropdown.Item>
                 <Dropdown.Item onClick={() => getGender("Female")}>
                   Female
-                </Dropdown.Item>
-                <Dropdown.Item onClick={() => getGender("Other")}>
-                  Other
                 </Dropdown.Item>
               </Dropdown.Menu>
             </Dropdown>
