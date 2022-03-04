@@ -82,6 +82,8 @@ services:
       - backends_connector_network
 
   frontend:
+    environment:
+      - LeaderNode=8000 
     build:
       context: ../../dsfrontend/
     volumes:
