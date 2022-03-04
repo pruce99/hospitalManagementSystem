@@ -82,8 +82,6 @@ services:
       - backends_connector_network
 
   frontend:
-    environment:
-      - Leader_Node_HOST_NAME=backend  # CHANGE TO CHANGE THE LEADER NODE
     build:
       context: ../../dsfrontend/
     volumes:
