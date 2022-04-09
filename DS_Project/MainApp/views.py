@@ -8,6 +8,7 @@ from . import serializers
 import requests
 from django.http import HttpResponse
 import os
+from MainApp import nodes
 
 # Create your views here.
 
@@ -19,11 +20,6 @@ class PatientInformationViewSet(viewsets.ModelViewSet):
 
 class Leader(APIView):
     def post(self, request):
-        nodes = [
-            'backend2',
-            'backend1',
-            'backend',
-        ]
         # make a call to all the nodes
         for node in nodes:
             response = requests.post(

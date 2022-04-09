@@ -1,108 +1,222 @@
 version: '3.8'
 
 services:
-  pg_db:
-    image: postgres:14.2
-    environment:
-      - POSTGRES_PASSWORD=password
-    volumes:
-      - pg_volume:/pgdata
-    ports:
-      - "5432:5432"
-    networks:
-      - backend_network
+#  pg_db:
+#    container_name: pg_db
+#    image: postgres:14.2
+#    environment:
+#      - POSTGRES_PASSWORD=password
+#    volumes:
+#      - pg_volume:/pgdata
+#    ports:
+#      - "5432:5432"
+#    networks:
+#      - backend_network
+#
+#  pg_db_1:
+#    container_name: pg_db_1
+#    image: postgres:14.2
+#    environment:
+#      - POSTGRES_PASSWORD=password
+#    volumes:
+#      - pg_volume_1:/pgdata
+#    ports:
+#      - "5433:5432"
+#    networks:
+#      - backend1_network
+#
+#  pg_db_2:
+#    container_name: pg_db_2
+#    image: postgres:14.2
+#    environment:
+#      - POSTGRES_PASSWORD=password
+#    volumes:
+#      - pg_volume_2:/pgdata
+#    ports:
+#      - "5434:5432"
+#    networks:
+#      - backend2_network
+#
+#  pg_db_3:
+#    container_name: pg_db_3
+#    image: postgres:14.2
+#    environment:
+#      - POSTGRES_PASSWORD=password
+#    volumes:
+#      - pg_volume_3:/pgdata
+#    ports:
+#      - "5434:5432"
+#    networks:
+#      - backend3_network
+#
+#  pg_db_4:
+#    container_name: pg_db_4
+#    image: postgres:14.2
+#    environment:
+#      - POSTGRES_PASSWORD=password
+#    volumes:
+#      - pg_volume_4:/pgdata
+#    ports:
+#      - "5434:5432"
+#    networks:
+#      - backend4_network
 
-  pg_db_1:
-    image: postgres:14.2
+  node1:
+    container_name: Node1
     environment:
-      - POSTGRES_PASSWORD=password
-    volumes:
-      - pg_volume_1:/pgdata
-    ports:
-      - "5433:5432"
-    networks:
-      - backend1_network
-
-  pg_db_2:
-    image: postgres:14.2
-    environment:
-      - POSTGRES_PASSWORD=password
-    volumes:
-      - pg_volume_2:/pgdata
-    ports:
-      - "5434:5432"
-    networks:
-      - backend2_network
-
-  # Leader Node
-  backend:
-    environment:
+      - PYTHONUNBUFFERED=1
       - DB_HOST_NAME=pg_db
+      - node_id=Node1
     build:
       context: .
     volumes:
       - .:/app
     ports:
       - "8000:8000"
-    depends_on:
-      - pg_db
+      - "9000"
+      - "9001"
+      - "9002"
+      - "9003"
+      - "5555"
+#    depends_on:
+#      - pg_db
     networks:
-      - backend_network
+      #- backend_network
       - backends_connector_network
-      - frontend_backend_network
+      #- frontend_backend_network
 
-  backend1:
+  node2:
+    container_name: Node2
     environment:
+      - PYTHONUNBUFFERED=1
       - DB_HOST_NAME=pg_db_1
+      - node_id=Node2
     build:
       context: .
     volumes:
       - .:/app
     ports:
       - "8001:8000"
-    depends_on:
-      - pg_db_1
+      - "9000"
+      - "9001"
+      - "9002"
+      - "9003"
+      - "5555"
+#    depends_on:
+#      - pg_db_1
     networks:
-      - backend1_network
+      #- backend1_network
       - backends_connector_network
 
-  backend2:
+  node3:
+    container_name: Node3
     environment:
+      - PYTHONUNBUFFERED=1
       - DB_HOST_NAME=pg_db_2
+      - node_id=Node3
     build:
       context: .
     volumes:
       - .:/app
     ports:
       - "8002:8000"
-    depends_on:
-      - pg_db_2
+      - "9000"
+      - "9001"
+      - "9002"
+      - "9003"
+      - "5555"
+#    depends_on:
+#      - pg_db_2
     networks:
-      - backend2_network
+      #- backend2_network
       - backends_connector_network
 
-  frontend:
+  node4:
+    container_name: Node4
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST_NAME=pg_db_3
+      - node_id=Node4
     build:
-      context: ../../dsfrontend/
+      context: .
     volumes:
-      - .:/frontend
+      - .:/app
     ports:
-      - "3000:3000"
-    depends_on:
-      - backend
-      - backend1
-      - backend2
+      - "8003:8000"
+      - "9000"
+      - "9001"
+      - "9002"
+      - "9003"
+      - "5555"
+#    depends_on:
+#      - pg_db_3
     networks:
-      - frontend_backend_network
+      #- backend3_network
+      - backends_connector_network
 
-volumes:
-  pg_volume:  # volume for pg_db
-  pg_volume_1:  # volume for pg_db_1
-  pg_volume_2:  # volume for pg_db_2
+  node5:
+    container_name: Node5
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST_NAME=pg_db_4
+      - node_id=Node5
+    build:
+      context: .
+    volumes:
+      - .:/app
+    ports:
+      - "8004:8000"
+      - "9000"
+      - "9001"
+      - "9002"
+      - "9003"
+      - "5555"
+#    depends_on:
+#      - pg_db_4
+    networks:
+      #- backend4_network
+      - backends_connector_network
+
+  #Do not change the part below
+  controller:
+    container_name: Controller
+    build: Controller/.
+    stdin_open: true
+    depends_on:
+      - node1
+      - node2
+      - node3
+      - node4
+      - node5
+    networks:
+      - backends_connector_network
+
+#  frontend:
+#    build:
+#      context: ../../dsfrontend/
+#    volumes:
+#      - .:/frontend
+#    ports:
+#      - "3000:3000"
+#    depends_on:
+#      - node1
+#      - node2
+#      - node3
+#    networks:
+#      - frontend_backend_network
+
+#volumes:
+#  pg_volume:  # volume for pg_db
+#  pg_volume_1:  # volume for pg_db_1
+#  pg_volume_2:  # volume for pg_db_2
+#  pg_volume_3:  # volume for pg_db_3
+#  pg_volume_4:  # volume for pg_db_4
 
 networks:
-  backend_network:  # bridges backend, pg_db
-  backend1_network:  # bridges backend1, pg_db_1
-  backend2_network:  # bridges backend2, pg_db_2
-  backends_connector_network:  # bridges backend, backend1, backend2
-  frontend_backend_network:  # bridges frontend, backend
+#  backend_network:  # bridges node1, pg_db
+#  backend1_network:  # bridges node2, pg_db_1
+#  backend2_network:  # bridges node3, pg_db_2
+#  backend3_network:  # bridges node4, pg_db_3
+#  backend4_network:  # bridges node5, pg_db_4
+  backends_connector_network:  # bridges node1, node2, node3, node4, node5
+#  frontend_backend_network:  # bridges frontend, backendc
