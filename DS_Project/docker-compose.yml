@@ -69,14 +69,15 @@ services:
       - node_id=Node1
     build:
       context: .
-    volumes:
-      - .:/app
+#    volumes:
+#      - .:/app
     ports:
       - "8000:8000"
       - "9000"
       - "9001"
       - "9002"
       - "9003"
+      - "9004"
       - "5555"
 #    depends_on:
 #      - pg_db
@@ -93,14 +94,15 @@ services:
       - node_id=Node2
     build:
       context: .
-    volumes:
-      - .:/app
+#    volumes:
+#      - .:/app
     ports:
       - "8001:8000"
       - "9000"
       - "9001"
       - "9002"
       - "9003"
+      - "9004"
       - "5555"
 #    depends_on:
 #      - pg_db_1
@@ -116,14 +118,15 @@ services:
       - node_id=Node3
     build:
       context: .
-    volumes:
-      - .:/app
+#    volumes:
+#      - .:/app
     ports:
       - "8002:8000"
       - "9000"
       - "9001"
       - "9002"
       - "9003"
+      - "9004"
       - "5555"
 #    depends_on:
 #      - pg_db_2
@@ -139,14 +142,15 @@ services:
       - node_id=Node4
     build:
       context: .
-    volumes:
-      - .:/app
+#    volumes:
+#      - .:/app
     ports:
       - "8003:8000"
       - "9000"
       - "9001"
       - "9002"
       - "9003"
+      - "9004"
       - "5555"
 #    depends_on:
 #      - pg_db_3
@@ -162,14 +166,15 @@ services:
       - node_id=Node5
     build:
       context: .
-    volumes:
-      - .:/app
+#    volumes:
+#      - .:/app
     ports:
       - "8004:8000"
       - "9000"
       - "9001"
       - "9002"
       - "9003"
+      - "9004"
       - "5555"
 #    depends_on:
 #      - pg_db_4
@@ -202,8 +207,11 @@ services:
 #      - node1
 #      - node2
 #      - node3
+#      - node4
+#      - node5
 #    networks:
-#      - frontend_backend_network
+#      - backends_connector_network
+##      - frontend_backend_network
 
 #volumes:
 #  pg_volume:  # volume for pg_db

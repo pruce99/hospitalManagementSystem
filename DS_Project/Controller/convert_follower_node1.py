@@ -1,8 +1,11 @@
 import json
 import socket
-import traceback
 import time
 import threading
+
+
+def send_msg():
+    skt.sendto(json.dumps(msg).encode('utf-8'), (target, port))
 
 
 def msg_rpc_listener(sock: socket.socket):
@@ -11,6 +14,10 @@ def msg_rpc_listener(sock: socket.socket):
         the_msg, addr = sock.recvfrom(1024)
         response = json.loads(the_msg.decode('utf-8'))  # decoded msg
         print(response)
+        if response['key'] == 'LEADER':
+            global target
+            target = response['value']
+            send_msg()
 
 
 msg_rpc_listener_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -26,26 +33,47 @@ msg = json.load(open("Message.json"))
 
 # Initialize
 sender = "Controller"
-target = "Node2"
 port = 5555
+skt = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
+target = "Node2"
 # Request
 msg['sender_name'] = sender
-msg['request'] = "LEADER_INFO"
-print(f"Request Created : {msg}")
+msg['request'] = "STORE"
+msg['key'] = 'store_patient'
+msg['value'] = {
+    'first_name': 'madara',
+    'last_name': 'uchiha',
+    'age': '110',
+    'gender': 'Male',
+    'phone_number': '+1 1234567890',
+    'email': 'madara_uchiha@clan.com',
+    'department': 'Cardiology',
+}
+print(f"Request Created")
+send_msg()
 
-# Socket Creation and Binding
-skt = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-# skt.bind((sender, port))
+time.sleep(2)
 
-# Send Message
-try:
-    # Encoding and sending the message
-    skt.sendto(json.dumps(msg).encode('utf-8'), (target, port))
-    pass
-except:
-    #  socket.gaierror: [Errno -3] would be thrown if target IP container does not exist or exits, write your listener
-    print(f"ERROR WHILE SENDING REQUEST ACROSS : {traceback.format_exc()}")
+msg['sender_name'] = sender
+msg['request'] = "STORE"
+msg['key'] = 'second_key'
+msg['value'] = {
+    'first_name': 'madara',
+    'last_name': 'uchiha',
+    'age': '110',
+    'gender': 'Male',
+    'phone_number': '+1 1234567890',
+    'email': 'madara_uchiha@clan.com',
+    'department': 'Cardiology',
+}
+print(f"Request Created")
+send_msg()
+
+time.sleep(2)
+
+msg['request'] = "RETRIEVE"
+send_msg()
 
 while True:  # to keep the listener alive
     pass

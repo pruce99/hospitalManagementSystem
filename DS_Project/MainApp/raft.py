@@ -7,16 +7,26 @@ import socket
 import json
 import threading
 from MainApp import nodes
+from . import models
+from django.forms.models import model_to_dict
+from django.db.models import Max
+from django.core.exceptions import ObjectDoesNotExist
 
 # RAFT environment
 current_term = voted_for = log = state = None
 timeout_interval = heartbeat_interval = 0
 kill_threads_flag = False
+# log replication
+index = 1
+commit_index = 0
+next_index = {node: 1 for node in nodes}
+match_index = {node: 0 for node in nodes}
 # ports
 request_vote_rpc_listener_port = 9000
 vote_acknowledgement_listener_port = 9001
 append_entry_rpc_listener_port = 9002
 msg_rpc_listener_port = 9003
+append_reply_rpc_listener_port = 9004
 controller_rpc_listener_port = 5555
 # controller details
 controller_id = 'Controller'
@@ -31,6 +41,16 @@ class State(enum.Enum):
     Follower = 0
     Candidate = 1
     Leader = 2
+
+
+# controller requests
+class Request(enum.Enum):
+    CONVERT_FOLLOWER = 'CONVERT_FOLLOWER'
+    TIMEOUT = 'TIMEOUT'
+    SHUTDOWN = 'SHUTDOWN'
+    LEADER_INFO = 'LEADER_INFO'
+    STORE = 'STORE'
+    RETRIEVE = 'RETRIEVE'
 
 
 # helpers
@@ -49,6 +69,12 @@ def udp_send(target: tuple, msg: dict):
     udp_sender_socket.sendto(msg_bytes, (target[0], target[1]))
 
 
+def ask_nodes_to_send_leader_info():
+    for node in nodes:
+        if node != os.environ['node_id']:
+            udp_send(target=(node, msg_rpc_listener_port), msg={'name': 'LEADER_INFO'})
+
+
 def init():
     global current_term, voted_for, log, heartbeat_interval, state
     current_term = 0  # very first term is zero
@@ -58,34 +84,117 @@ def init():
     state = State.Follower  # every node starts as Follower
 
 
-def append_entry_rpc(node: str, is_heartbeat: bool):
-    global current_term, append_entry_rpc_listener_port
+def append_entry_rpc(node: str):
+    global current_term, append_entry_rpc_listener_port, next_index, commit_index
+    try:
+        entry = models.Logs.objects.get(index=next_index[node])
+    except ObjectDoesNotExist:
+        entry = None
+    prev_log_index = next_index[node] - 1
+    try:
+        obj = models.Logs.objects.get(index=prev_log_index)
+        prev_log_term = obj.term
+    except ObjectDoesNotExist:
+        prev_log_term = 0
     msg = {
         'term': current_term,
         'leader_id': os.environ['node_id'],
-        'entries': None if is_heartbeat else None,  # temp
-        'prev_log_index': -1,  # temp
-        'prev_log_term': 0,  # temp
+        'entry': None if entry is None else model_to_dict(
+            entry,
+            fields=['term', 'key', 'value'],
+        ),
+        'prev_log_index': prev_log_index,
+        'prev_log_term': prev_log_term,
+        'commit_index': commit_index,
     }
     udp_send(target=(node, append_entry_rpc_listener_port), msg=msg)
     # print(f"Sent {'heartbeat' if is_heartbeat else 'append_entry_rpc'} - term - {current_term} SENT to {node}")
 
 
 def append_entry_rpc_listener(sock: socket.socket):
-    global state, timeout_timer
+    global state, timeout_timer, current_term, kill_threads_flag, commit_index
     print('Starting append_entry_rpc_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
         if kill_threads_flag:
             print('Stopping append_entry_rpc_listener')
             exit()  # stops this listener
-        append_entry = json.loads(msg.decode('utf-8'))  # decoded msg
-        # print(f"Received {'heartbeat' if append_entry['entries'] is None else 'append_entry'} from "
-        #       f"{append_entry['leader_id']} - term - {append_entry['term']}")
         state = State.Follower
         timeout_timer.cancel()  # stop the timeout_timer
         new_timeout_timer()  # get new timeout_timer
         timeout_timer.start()  # restart timeout_timer with different timeout_interval
+        append_entry = json.loads(msg.decode('utf-8'))  # decoded msg
+        if append_entry['entry'] is not None:  # skip log replication if heartbeat
+            if append_entry['term'] < current_term or not log_consistency_check(append_entry):
+                append_reply_rpc(append_entry['leader_id'], success=False)
+            else:
+                append_reply_rpc(append_entry['leader_id'], success=True)
+            # update commit index
+            if append_entry['commit_index'] > commit_index:
+                commit_index = min(append_entry['commit_index'], index-1)
+
+
+def log_consistency_check(append_entry: dict):
+    global match_index, index
+    # if this is the first log then push directly
+    if append_entry['prev_log_index'] == 0:
+        models.Logs.objects.create(
+            index=index,
+            term=append_entry['entry']['term'],
+            key=append_entry['entry']['key'],
+            value=append_entry['entry']['value'],
+        )
+        match_index[os.environ['node_id']] = index
+        index += 1
+        return True
+    # check if log exists at prev_log_index
+    try:
+        log_at_prev_index = models.Logs.objects.get(index=append_entry['prev_log_index'])
+    except ObjectDoesNotExist:
+        return False
+    # if term conflicts, remove the conflicting log and rest of the following logs
+    if log_at_prev_index.term != append_entry['prev_log_term']:
+        for each_log in models.Logs.objects.filter(index__gte=log_at_prev_index.index):
+            each_log.delete()
+            index -= 1
+        return False
+    # if log is consistent and if logs can be pushed, push the new log
+    models.Logs.objects.create(
+        index=index,
+        term=append_entry['entry']['term'],
+        key=append_entry['entry']['key'],
+        value=append_entry['entry']['value'],
+    )
+    match_index[os.environ['node_id']] = index
+    index += 1
+    return True
+
+
+def append_reply_rpc(node: str, success: bool):
+    global match_index
+    msg = {
+        'term': current_term,
+        'follower_id': os.environ['node_id'],
+        'success': success,
+        'match_index': match_index[os.environ['node_id']],
+    }
+    udp_send(target=(node, append_reply_rpc_listener_port), msg=msg)
+
+
+def append_reply_rpc_listener(sock: socket.socket):
+    global kill_threads_flag, match_index, next_index
+    print('Starting append_reply_rpc_listener')
+    while True:
+        msg, addr = sock.recvfrom(1024)
+        if kill_threads_flag:
+            print('Stopping append_reply_rpc_listener')
+            exit()  # stops this listener
+        append_reply = json.loads(msg.decode('utf-8'))  # decoded msg
+        if append_reply['success']:
+            match_index[append_reply['follower_id']] = append_reply['match_index']
+            next_index[append_reply['follower_id']] += 1
+        else:
+            next_index[append_reply['follower_id']] -= 1  # check
 
 
 def request_vote_rpc(node: str):
@@ -102,7 +211,7 @@ def request_vote_rpc(node: str):
 
 def vote_acknowledgement_listener(sock: socket.socket):
     print('Starting vote_acknowledgement_listener')
-    global state, heartbeat_timer
+    global state, heartbeat_timer, next_index, kill_threads_flag
     positive_votes = 0
     while True:
         msg, addr = sock.recvfrom(1024)
@@ -116,10 +225,16 @@ def vote_acknowledgement_listener(sock: socket.socket):
         # only elect leader if state is Candidate ( Make sures there is only one Leader at a time )
         # state is changed to Follower in append_entry_rpc_listener
         time.sleep(0.01)  # wait and check if the node is still candidate
-        if positive_votes + 1 > len(nodes)//2 and state is State.Candidate:
+        if positive_votes + 1 > len(nodes) // 2 and state is State.Candidate:
             timeout_timer.cancel()  # stop the timeout_timer for the leader
             state = State.Leader
-            # print('Became Leader')
+            # init next_index
+            for node in nodes:
+                max_index = models.Logs.objects.aggregate(Max('index'))['index__max']
+                if max_index is None:  # if log is empty
+                    next_index[node] = 1
+                else:
+                    next_index[node] = models.Logs.objects.aggregate(Max('index'))['index__max'] + 1
             positive_votes = 0
             # start sending heartbeats
             heartbeat_timer = threading.Timer(heartbeat_interval / 1000, send_heartbeats)
@@ -128,7 +243,7 @@ def vote_acknowledgement_listener(sock: socket.socket):
 
 def request_vote_rpc_listener(sock: socket.socket):
     print('Starting request_vote_rpc_listener')
-    global current_term, voted_for
+    global current_term, voted_for, kill_threads_flag
     while True:
         msg, addr = sock.recvfrom(1024)
         if kill_threads_flag:
@@ -182,12 +297,12 @@ def new_timeout_timer():
     global timeout_interval, timeout_timer
     # start election when timeout_timer runs out
     timeout_interval = set_timeout_interval()
-    timeout_timer = threading.Timer(timeout_interval/1000, start_election)
+    timeout_timer = threading.Timer(timeout_interval / 1000, start_election)
 
 
 def send_heartbeats():
     # print('Sending Heartbeats')
-    global current_term, heartbeat_interval, heartbeat_timer
+    global current_term, heartbeat_interval, heartbeat_timer, kill_threads_flag
     if kill_threads_flag:
         print('Stopping heartbeats thread')
         exit()  # stops this thread
@@ -195,13 +310,13 @@ def send_heartbeats():
         return
     for node in nodes:
         if node != os.environ['node_id']:
-            append_entry_rpc(node, is_heartbeat=True)
-    heartbeat_timer = threading.Timer(heartbeat_interval/1000, send_heartbeats)
+            append_entry_rpc(node)
+    heartbeat_timer = threading.Timer(heartbeat_interval / 1000, send_heartbeats)
     heartbeat_timer.start()  # keep sending heartbeats
 
 
 def controller_rpc_listener(sock: socket.socket):
-    global state, kill_threads_flag, timeout_timer
+    global state, current_term, kill_threads_flag, timeout_timer, commit_index, index
     print('Starting controller_rpc_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
@@ -210,31 +325,69 @@ def controller_rpc_listener(sock: socket.socket):
             exit()  # stops this listener
         controller_request = json.loads(msg.decode('utf-8'))  # decoded msg
         print(f"Controller Request Received - {controller_request['request']}")
-        if controller_request['request'] == 'CONVERT_FOLLOWER':
+        if controller_request['request'] == Request.CONVERT_FOLLOWER.value:
             state = State.Follower
             timeout_timer.cancel()  # stop the timeout_timer
             new_timeout_timer()  # get new timeout_timer
             timeout_timer.start()  # restart timeout_timer with different timeout_interval
-        elif controller_request['request'] == 'TIMEOUT':
+        elif controller_request['request'] == Request.TIMEOUT.value:
             timeout_timer.cancel()  # stop the timeout_timer
             start_election()  # immediately start elections
-        elif controller_request['request'] == 'SHUTDOWN':
+        elif controller_request['request'] == Request.SHUTDOWN.value:
             kill_threads_flag = True
             timeout_timer.cancel()  # stop timeout timer
-        elif controller_request['request'] == 'LEADER_INFO':
+        elif controller_request['request'] == Request.LEADER_INFO.value:
             if state is state.Leader:  # if current node is leader then send its info
                 udp_send(
                     target=(controller_id, controller_port),
-                    msg={'LEADER': os.environ['node_id']}
+                    msg={
+                        'sender_name': os.environ['node_id'],
+                        'request': 'LEADER_INFO',
+                        'term': None,
+                        'key': 'LEADER',
+                        'value': os.environ['node_id'],
+                    }
                 )
             else:  # ask all others in the cluster to send leader info to Controller, if apply
-                for node in nodes:
-                    if node != os.environ['node_id']:
-                        udp_send(target=(node, msg_rpc_listener_port), msg={'name': 'LEADER_INFO'})
+                ask_nodes_to_send_leader_info()
+        elif controller_request['request'] == Request.STORE.value:
+            if state is state.Leader:  # if current node is leader then store to its log
+                models.Logs.objects.create(
+                    index=index,
+                    term=current_term,
+                    key=controller_request['key'],
+                    value=controller_request['value'],
+                )
+                index += 1
+                print('Log Stored')
+            else:  # ask all others in the cluster to send leader info to Controller, if apply
+                ask_nodes_to_send_leader_info()
+        elif controller_request['request'] == Request.RETRIEVE.value:
+            if state is state.Leader:  # if current node is leader then send committed logs
+                commited_logs = list()
+                for each_log in models.Logs.objects.filter(index__lte=commit_index):
+                    commited_logs.append(
+                        model_to_dict(
+                            each_log,
+                            fields=['term', 'key', 'value'],
+                        ),
+                    )
+                udp_send(
+                    target=(controller_id, controller_port),
+                    msg={
+                        'sender_name': os.environ['node_id'],
+                        'request': 'RETRIEVE',
+                        'term': None,
+                        'key': 'COMMITED_LOGS',
+                        'value': commited_logs,
+                    }
+                )
+            else:  # ask all others in the cluster to send leader info to Controller, if apply
+                ask_nodes_to_send_leader_info()
 
 
 def msg_rpc_listener(sock: socket.socket):
-    global state
+    global state, kill_threads_flag
     print('Starting msg_rpc_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
@@ -242,11 +395,17 @@ def msg_rpc_listener(sock: socket.socket):
             print('Stopping msg_rpc_listener')
             exit()  # stops this listener
         msg = json.loads(msg.decode('utf-8'))  # decoded msg
-        if msg['name'] == 'LEADER_INFO':
+        if msg['name'] == Request.LEADER_INFO.value:
             if state is State.Leader:
                 udp_send(
                     target=(controller_id, controller_port),
-                    msg={'LEADER': os.environ['node_id']}
+                    msg={
+                        'sender_name': os.environ['node_id'],
+                        'request': 'LEADER_INFO',
+                        'term': None,
+                        'key': 'LEADER',
+                        'value': os.environ['node_id'],
+                    }
                 )
 
 
@@ -271,6 +430,9 @@ def main():
     controller_rpc_listener_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
     controller_rpc_listener_socket.bind((os.environ['node_id'], controller_rpc_listener_port))
 
+    append_reply_rpc_listener_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+    append_reply_rpc_listener_socket.bind((os.environ['node_id'], append_reply_rpc_listener_port))
+
     # start listeners
     print('Starting Listeners')
     threading.Thread(target=request_vote_rpc_listener, args=[request_vote_rpc_listener_socket]).start()
@@ -278,6 +440,7 @@ def main():
     threading.Thread(target=append_entry_rpc_listener, args=[append_entry_rpc_listener_socket]).start()
     threading.Thread(target=msg_rpc_listener, args=[msg_rpc_listener_socket]).start()
     threading.Thread(target=controller_rpc_listener, args=[controller_rpc_listener_socket]).start()
+    threading.Thread(target=append_reply_rpc_listener, args=[append_reply_rpc_listener_socket]).start()
 
     # sleep for some time to let the listeners start
     time.sleep(1)
@@ -287,9 +450,9 @@ def main():
     new_timeout_timer()
     timeout_timer.start()
 
-    while True:
-        print(state, current_term)
-        if kill_threads_flag:
-            print('Stopping Raft')
-            return
-        time.sleep(1)
+    # while True:
+    #     print(state, current_term)
+    #     if kill_threads_flag:
+    #         print('Stopping Raft')
+    #         return
+    #     time.sleep(1)

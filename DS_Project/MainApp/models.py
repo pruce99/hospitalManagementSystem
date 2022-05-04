@@ -32,3 +32,10 @@ class PatientInformation(models.Model):
 
     def __str__(self):
         return self.email
+
+
+class Logs(models.Model):
+    index = models.IntegerField(primary_key=True)
+    term = models.IntegerField()
+    key = models.CharField(max_length=50)
+    value = models.JSONField()
