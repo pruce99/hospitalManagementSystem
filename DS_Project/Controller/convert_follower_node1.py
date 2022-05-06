@@ -14,10 +14,13 @@ def msg_rpc_listener(sock: socket.socket):
         the_msg, addr = sock.recvfrom(1024)
         response = json.loads(the_msg.decode('utf-8'))  # decoded msg
         print(response)
-        if response['key'] == 'LEADER':
-            global target
-            target = response['value']
-            send_msg()
+        try:
+            if response['key'] == 'LEADER':
+                global target
+                target = response['value']
+                send_msg()
+        except KeyError:
+            pass
 
 
 msg_rpc_listener_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -36,11 +39,11 @@ sender = "Controller"
 port = 5555
 skt = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
-target = "Node2"
+target = 'Node2'
 # Request
 msg['sender_name'] = sender
 msg['request'] = "STORE"
-msg['key'] = 'store_patient'
+msg['key'] = 'store_patient_madara'
 msg['value'] = {
     'first_name': 'madara',
     'last_name': 'uchiha',
@@ -53,27 +56,56 @@ msg['value'] = {
 print(f"Request Created")
 send_msg()
 
-time.sleep(2)
+time.sleep(.5)
 
+target = 'Node3'
+msg['request'] = 'SHUTDOWN'
+send_msg()
+
+time.sleep(.5)
+
+target = 'Node2'
 msg['sender_name'] = sender
 msg['request'] = "STORE"
-msg['key'] = 'second_key'
+msg['key'] = 'store_patient_sasuke'
 msg['value'] = {
-    'first_name': 'madara',
+    'first_name': 'sasuke',
     'last_name': 'uchiha',
     'age': '110',
     'gender': 'Male',
     'phone_number': '+1 1234567890',
-    'email': 'madara_uchiha@clan.com',
+    'email': 'sasuke_uchiha@clan.com',
     'department': 'Cardiology',
 }
 print(f"Request Created")
 send_msg()
 
-time.sleep(2)
+time.sleep(.5)
+
+target = 'Node2'
+msg['sender_name'] = sender
+msg['request'] = "STORE"
+msg['key'] = 'store_patient_itachi'
+msg['value'] = {
+    'first_name': 'itachi',
+    'last_name': 'uchiha',
+    'age': '110',
+    'gender': 'Male',
+    'phone_number': '+1 1234567890',
+    'email': 'itachi_uchiha@clan.com',
+    'department': 'Cardiology',
+}
+print(f"Request Created")
+send_msg()
+
+time.sleep(.5)
 
 msg['request'] = "RETRIEVE"
 send_msg()
+
+# target = 'Node3'
+# msg['request'] = "CONVERT_FOLLOWER"
+# send_msg()
 
 while True:  # to keep the listener alive
     pass

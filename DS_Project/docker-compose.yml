@@ -73,6 +73,7 @@ services:
 #      - .:/app
     ports:
       - "8000:8000"
+      - "8999"
       - "9000"
       - "9001"
       - "9002"
@@ -99,6 +100,7 @@ services:
 #      - .:/app
     ports:
       - "8001:8000"
+      - "8999"
       - "9000"
       - "9001"
       - "9002"
@@ -124,6 +126,7 @@ services:
 #      - .:/app
     ports:
       - "8002:8000"
+      - "8999"
       - "9000"
       - "9001"
       - "9002"
@@ -149,6 +152,7 @@ services:
 #      - .:/app
     ports:
       - "8003:8000"
+      - "8999"
       - "9000"
       - "9001"
       - "9002"
@@ -174,6 +178,7 @@ services:
 #      - .:/app
     ports:
       - "8004:8000"
+      - "8999"
       - "9000"
       - "9001"
       - "9002"
@@ -187,7 +192,7 @@ services:
       #- backend4_network
       - backends_connector_network
 
-  #Do not change the part below
+#  Do not change the part below
   controller:
     container_name: Controller
     build: Controller/.
