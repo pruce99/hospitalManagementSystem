@@ -107,6 +107,11 @@ def append_entry_rpc(node: str):
         prev_log_term = obj.term
     except ObjectDoesNotExist:
         prev_log_term = 0
+    # if node == 'Node3':
+    #     if entry is not None:
+    #         print('append_rpc:', next_index, prev_log_index, entry.index, entry.key)
+    #     else:
+    #         print('append_rpc:', next_index, prev_log_index)
     msg = {
         'term': current_term,
         'leader_id': os.environ['node_id'],
@@ -127,7 +132,7 @@ def append_entry_rpc_listener(sock: socket.socket):
     print('Starting append_entry_rpc_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
-        while kill_threads_flag:
+        if kill_threads_flag:
             pass
         state = State.Follower
         timeout_timer.cancel()  # stop the timeout_timer
@@ -135,6 +140,9 @@ def append_entry_rpc_listener(sock: socket.socket):
         timeout_timer.start()  # restart timeout_timer with different timeout_interval
         append_entry = json.loads(msg.decode('utf-8'))  # decoded msg
         if append_entry['entry'] is not None:  # skip log replication if heartbeat
+            if os.environ['node_id'] == 'Node3':
+                print('here', index, commit_index, append_entry['prev_log_index'],
+                      append_entry['entry']['index'], append_entry['entry']['key'])
             if append_entry['term'] < current_term or not log_consistency_check(append_entry):
                 append_reply_rpc(append_entry['leader_id'], success=False)
             else:
@@ -151,7 +159,7 @@ def apply_commits_listener(sock: socket.socket):
     print('Starting apply_commits_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
-        while kill_threads_flag:
+        if kill_threads_flag:
             pass
         dummy = json.loads(msg.decode('utf-8'))  # decoded msg
         not_applied_logs = models.Logs.objects.filter(index__gt=last_applied, index__lte=commit_index)
@@ -188,8 +196,8 @@ def log_consistency_check(append_entry: dict):
             index -= 1
         return False
     # do not log bad entries
-    if index-1 > append_entry['entry']['index']:
-        return True
+    # if index-1 > append_entry['entry']['index']:
+    #     return True
     # if log is consistent and if logs can be pushed, push the new log
     models.Logs.objects.create(
         index=index,
@@ -218,7 +226,7 @@ def append_reply_rpc_listener(sock: socket.socket):
     print('Starting append_reply_rpc_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
-        while kill_threads_flag:
+        if kill_threads_flag:
             pass
         append_reply = json.loads(msg.decode('utf-8'))  # decoded msg
         if append_reply['success']:
@@ -231,9 +239,11 @@ def append_reply_rpc_listener(sock: socket.socket):
                 match_index_counter[value] += 1
             commit_index = max(match_index_counter, key=lambda _: match_index_counter[_])
             udp_send(target=(os.environ['node_id'], apply_commits_listener_port), msg={'dummy': 'dummy'})
+            print('got true', next_index, match_index)
         else:
             next_index[append_reply['follower_id']] -= 1
             next_index[append_reply['follower_id']] = max(1, next_index[append_reply['follower_id']])  # bound
+            print('got false', next_index)
 
 
 def request_vote_rpc(node: str):
@@ -258,7 +268,7 @@ def vote_acknowledgement_listener(sock: socket.socket):
     positive_votes = 0
     while True:
         msg, addr = sock.recvfrom(1024)
-        while kill_threads_flag:
+        if kill_threads_flag:
             pass
         ack = json.loads(msg.decode('utf-8'))  # decoded msg
         print(f"Received {'YES' if ack['vote'] else 'NO'} vote from {ack['from']}")
@@ -288,7 +298,7 @@ def request_vote_rpc_listener(sock: socket.socket):
     global current_term, voted_for, kill_threads_flag
     while True:
         msg, addr = sock.recvfrom(1024)
-        while kill_threads_flag:
+        if kill_threads_flag:
             pass
         candidate = json.loads(msg.decode('utf-8'))  # decoded msg
         print(f"Received vote request from {candidate['candidate_id']} - term - {candidate['term']}")
@@ -352,7 +362,7 @@ def new_timeout_timer():
 def send_heartbeats():
     # print('Sending Heartbeats')
     global current_term, heartbeat_interval, heartbeat_timer, kill_threads_flag
-    while kill_threads_flag:
+    if kill_threads_flag:
         pass
     if state is not State.Leader:  # stop sending heartbeats once the leader stops being leader
         return
@@ -441,7 +451,7 @@ def msg_rpc_listener(sock: socket.socket):
     print('Starting msg_rpc_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
-        while kill_threads_flag:
+        if kill_threads_flag:
             pass
         msg = json.loads(msg.decode('utf-8'))  # decoded msg
         if msg['name'] == Request.LEADER_INFO.value:
@@ -470,12 +480,23 @@ def msg_rpc_listener(sock: socket.socket):
 
 
 def front_end_request_listener(sock: socket.socket):
-    global state, controller_id
+    global state, controller_id, index, match_index, current_term
     print('Starting front_end_request_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
         msg = json.loads(msg.decode('utf-8'))  # decoded msg
-        ask_nodes_to_store({'name': Request.STORE.value, 'request': msg})
+        if state is State.Leader:
+            models.Logs.objects.create(
+                index=index,
+                term=current_term,
+                key='store_data_' + msg['request']['first_name'],
+                value=msg['request'],
+            )
+            match_index[os.environ['node_id']] = index
+            index += 1
+            print('Log Stored')
+        else:
+            ask_nodes_to_store({'name': Request.STORE.value, 'request': msg})
 
 
 def main():
