@@ -11,6 +11,8 @@ from . import models
 from django.forms.models import model_to_dict
 from django.db.models import Max
 from django.core.exceptions import ObjectDoesNotExist
+from collections import defaultdict
+import requests
 
 # RAFT environment
 current_term = voted_for = log = state = None
@@ -19,6 +21,7 @@ kill_threads_flag = False
 # log replication
 index = 1
 commit_index = 0
+last_applied = 0
 next_index = {node: 1 for node in nodes}
 match_index = {node: 0 for node in nodes}
 # ports
@@ -27,6 +30,7 @@ vote_acknowledgement_listener_port = 9001
 append_entry_rpc_listener_port = 9002
 msg_rpc_listener_port = 9003
 append_reply_rpc_listener_port = 9004
+apply_commits_listener_port = 9005
 controller_rpc_listener_port = 5555
 # controller details
 controller_id = 'Controller'
@@ -129,9 +133,29 @@ def append_entry_rpc_listener(sock: socket.socket):
                 append_reply_rpc(append_entry['leader_id'], success=False)
             else:
                 append_reply_rpc(append_entry['leader_id'], success=True)
-            # update commit index
-            if append_entry['commit_index'] > commit_index:
-                commit_index = min(append_entry['commit_index'], index-1)
+        # update commit index
+        if append_entry['commit_index'] > commit_index:
+            commit_index = min(append_entry['commit_index'], index-1)
+            # apply the commit to state machine
+            udp_send(target=(os.environ['node_id'], apply_commits_listener_port), msg={'dummy': 'dummy'})
+
+
+def apply_commits_listener(sock: socket.socket):
+    global kill_threads_flag, commit_index, last_applied
+    print('Starting apply_commits_listener')
+    while True:
+        msg, addr = sock.recvfrom(1024)
+        if kill_threads_flag:
+            print('Stopping apply_commits_listener')
+            exit()  # stops this listener
+        dummy = json.loads(msg.decode('utf-8'))  # decoded msg
+        not_applied_logs = models.Logs.objects.filter(index__gt=last_applied, index__lte=commit_index)
+        for the_log in not_applied_logs:
+            requests.post(
+                url=f"http://{os.environ['node_id']}:8000/MainApp/store_patient_info/",
+                data=the_log.value,
+            )
+            last_applied += 1
 
 
 def log_consistency_check(append_entry: dict):
@@ -182,7 +206,7 @@ def append_reply_rpc(node: str, success: bool):
 
 
 def append_reply_rpc_listener(sock: socket.socket):
-    global kill_threads_flag, match_index, next_index
+    global kill_threads_flag, match_index, next_index, commit_index, last_applied
     print('Starting append_reply_rpc_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
@@ -193,6 +217,13 @@ def append_reply_rpc_listener(sock: socket.socket):
         if append_reply['success']:
             match_index[append_reply['follower_id']] = append_reply['match_index']
             next_index[append_reply['follower_id']] += 1
+            # update commit index of leader if a majority of the followers replicated logs
+            match_index_counter = defaultdict(lambda: 0)
+            for value in match_index.values():
+                match_index_counter[value] += 1
+            commit_index = max(match_index_counter, key=lambda _: match_index_counter[_])
+            # apply the commit to state machine
+            udp_send(target=(os.environ['node_id'], apply_commits_listener_port), msg={'dummy': 'dummy'})
         else:
             next_index[append_reply['follower_id']] -= 1  # check
 
@@ -358,6 +389,7 @@ def controller_rpc_listener(sock: socket.socket):
                     key=controller_request['key'],
                     value=controller_request['value'],
                 )
+                match_index[os.environ['node_id']] = index
                 index += 1
                 print('Log Stored')
             else:  # ask all others in the cluster to send leader info to Controller, if apply
@@ -433,6 +465,9 @@ def main():
     append_reply_rpc_listener_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
     append_reply_rpc_listener_socket.bind((os.environ['node_id'], append_reply_rpc_listener_port))
 
+    apply_commits_listener_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+    apply_commits_listener_socket.bind((os.environ['node_id'], apply_commits_listener_port))
+
     # start listeners
     print('Starting Listeners')
     threading.Thread(target=request_vote_rpc_listener, args=[request_vote_rpc_listener_socket]).start()
@@ -441,6 +476,7 @@ def main():
     threading.Thread(target=msg_rpc_listener, args=[msg_rpc_listener_socket]).start()
     threading.Thread(target=controller_rpc_listener, args=[controller_rpc_listener_socket]).start()
     threading.Thread(target=append_reply_rpc_listener, args=[append_reply_rpc_listener_socket]).start()
+    threading.Thread(target=apply_commits_listener, args=[apply_commits_listener_socket]).start()
 
     # sleep for some time to let the listeners start
     time.sleep(1)
