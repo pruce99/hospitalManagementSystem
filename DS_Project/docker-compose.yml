@@ -73,13 +73,13 @@ services:
 #      - .:/app
     ports:
       - "8000:8000"
-      - "8999"
       - "9000"
       - "9001"
       - "9002"
       - "9003"
       - "9004"
       - "9005"
+      - "9006"
       - "5555"
 #    depends_on:
 #      - pg_db
@@ -100,13 +100,13 @@ services:
 #      - .:/app
     ports:
       - "8001:8000"
-      - "8999"
       - "9000"
       - "9001"
       - "9002"
       - "9003"
       - "9004"
       - "9005"
+      - "9006"
       - "5555"
 #    depends_on:
 #      - pg_db_1
@@ -126,13 +126,13 @@ services:
 #      - .:/app
     ports:
       - "8002:8000"
-      - "8999"
       - "9000"
       - "9001"
       - "9002"
       - "9003"
       - "9004"
       - "9005"
+      - "9006"
       - "5555"
 #    depends_on:
 #      - pg_db_2
@@ -152,13 +152,13 @@ services:
 #      - .:/app
     ports:
       - "8003:8000"
-      - "8999"
       - "9000"
       - "9001"
       - "9002"
       - "9003"
       - "9004"
       - "9005"
+      - "9006"
       - "5555"
 #    depends_on:
 #      - pg_db_3
@@ -178,13 +178,13 @@ services:
 #      - .:/app
     ports:
       - "8004:8000"
-      - "8999"
       - "9000"
       - "9001"
       - "9002"
       - "9003"
       - "9004"
       - "9005"
+      - "9006"
       - "5555"
 #    depends_on:
 #      - pg_db_4
@@ -193,26 +193,10 @@ services:
       - backends_connector_network
 
 #  Do not change the part below
-  controller:
-    container_name: Controller
-    build: Controller/.
-    stdin_open: true
-    depends_on:
-      - node1
-      - node2
-      - node3
-      - node4
-      - node5
-    networks:
-      - backends_connector_network
-
-#  frontend:
-#    build:
-#      context: ../../dsfrontend/
-#    volumes:
-#      - .:/frontend
-#    ports:
-#      - "3000:3000"
+#  controller:
+#    container_name: Controller
+#    build: Controller/.
+#    stdin_open: true
 #    depends_on:
 #      - node1
 #      - node2
@@ -221,7 +205,23 @@ services:
 #      - node5
 #    networks:
 #      - backends_connector_network
-##      - frontend_backend_network
+
+  frontend:
+    build:
+      context: ../../dsfrontend/
+    volumes:
+      - .:/frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - node1
+      - node2
+      - node3
+      - node4
+      - node5
+    networks:
+      - backends_connector_network
+#      - frontend_backend_network
 
 #volumes:
 #  pg_volume:  # volume for pg_db

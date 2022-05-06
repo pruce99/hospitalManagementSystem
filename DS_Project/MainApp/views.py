@@ -10,18 +10,8 @@ from django.http import HttpResponse
 import os
 from MainApp import nodes
 from . import raft
-import socket
-import json
 import random
-import threading
-
 # Create your views here.
-# ports
-response_sock_port = 8999
-# response_sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-# response_sock.bind((os.environ['node_id'], response_sock_port))
-# response_receive_flag = False
-# the_msg = {}  # dummy dict
 
 
 # def response_listener(sock: socket.socket):
@@ -54,5 +44,5 @@ class Leader(APIView):
         #     'key': 'store_data_' + request.data['first_name'],
         #     'value': request.data,
         # }
-        # raft.udp_send(target=(random.choice(nodes), raft.controller_rpc_listener_port), msg=the_msg)
+        raft.udp_send(target=(random.choice(nodes), raft.front_end_request_listener_port), msg=request.data)
         return Response(data=None, status=201)

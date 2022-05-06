@@ -13,7 +13,6 @@ from django.db.models import Max
 from django.core.exceptions import ObjectDoesNotExist
 from collections import defaultdict
 import requests
-from . import views
 
 # RAFT environment
 current_term = voted_for = log = state = None
@@ -32,6 +31,7 @@ append_entry_rpc_listener_port = 9002
 msg_rpc_listener_port = 9003
 append_reply_rpc_listener_port = 9004
 apply_commits_listener_port = 9005
+front_end_request_listener_port = 9006
 controller_rpc_listener_port = 5555
 # controller details
 controller_id = 'Controller'
@@ -39,8 +39,6 @@ controller_port = 5555
 # timers
 timeout_timer = threading.Timer(0, lambda _: _)  # Dummy Timer
 heartbeat_timer = threading.Timer(0, lambda _: _)  # Dummy Timer
-# response
-respond_to = controller_id
 
 
 # state enum
@@ -79,7 +77,13 @@ def udp_send(target: tuple, msg: dict):
 def ask_nodes_to_send_leader_info():
     for node in nodes:
         if node != os.environ['node_id']:
-            udp_send(target=(node, msg_rpc_listener_port), msg={'name': 'LEADER_INFO'})
+            udp_send(target=(node, msg_rpc_listener_port), msg={'name': Request.LEADER_INFO.name})
+
+
+def ask_nodes_to_store(msg):
+    for node in nodes:
+        if node != os.environ['node_id']:
+            udp_send(target=(node, msg_rpc_listener_port), msg=msg)
 
 
 def init():
@@ -226,13 +230,6 @@ def append_reply_rpc_listener(sock: socket.socket):
             for value in match_index.values():
                 match_index_counter[value] += 1
             commit_index = max(match_index_counter, key=lambda _: match_index_counter[_])
-            # apply the commit to state machine
-            # if commit_index < last_applied:
-            #     # send response back to client
-            #     udp_send(
-            #         target=(respond_to, controller_port if respond_to == controller_id else views.response_sock_port),
-            #         msg={'status_code': 201},
-            #     )
             udp_send(target=(os.environ['node_id'], apply_commits_listener_port), msg={'dummy': 'dummy'})
         else:
             next_index[append_reply['follower_id']] -= 1
@@ -367,12 +364,11 @@ def send_heartbeats():
 
 
 def controller_rpc_listener(sock: socket.socket):
-    global state, current_term, kill_threads_flag, timeout_timer, commit_index, index, respond_to
+    global state, current_term, kill_threads_flag, timeout_timer, commit_index, index
     print('Starting controller_rpc_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
         controller_request = json.loads(msg.decode('utf-8'))  # decoded msg
-        respond_to = controller_request['sender_name']  # set to respond back
         if not kill_threads_flag:
             print(f"Controller Request Received - {controller_request['request']}")
         if kill_threads_flag and controller_request['request'] == Request.CONVERT_FOLLOWER.value:
@@ -441,7 +437,7 @@ def controller_rpc_listener(sock: socket.socket):
 
 
 def msg_rpc_listener(sock: socket.socket):
-    global state, kill_threads_flag, controller_id, respond_to
+    global state, kill_threads_flag, controller_id, index, match_index, current_term
     print('Starting msg_rpc_listener')
     while True:
         msg, addr = sock.recvfrom(1024)
@@ -451,7 +447,7 @@ def msg_rpc_listener(sock: socket.socket):
         if msg['name'] == Request.LEADER_INFO.value:
             if state is State.Leader:
                 udp_send(
-                    target=(respond_to, controller_port if respond_to == controller_id else views.response_sock_port),
+                    target=(controller_id, controller_port),
                     msg={
                         'sender_name': os.environ['node_id'],
                         'request': 'LEADER_INFO',
@@ -460,6 +456,26 @@ def msg_rpc_listener(sock: socket.socket):
                         'value': os.environ['node_id'],
                     }
                 )
+        elif msg['name'] == Request.STORE.value:
+            if state is State.Leader:
+                models.Logs.objects.create(
+                    index=index,
+                    term=current_term,
+                    key='store_data_' + msg['request']['first_name'],
+                    value=msg['request'],
+                )
+                match_index[os.environ['node_id']] = index
+                index += 1
+                print('Log Stored')
+
+
+def front_end_request_listener(sock: socket.socket):
+    global state, controller_id
+    print('Starting front_end_request_listener')
+    while True:
+        msg, addr = sock.recvfrom(1024)
+        msg = json.loads(msg.decode('utf-8'))  # decoded msg
+        ask_nodes_to_store({'name': Request.STORE.value, 'request': msg})
 
 
 def main():
@@ -489,6 +505,9 @@ def main():
     apply_commits_listener_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
     apply_commits_listener_socket.bind((os.environ['node_id'], apply_commits_listener_port))
 
+    front_end_request_listener_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+    front_end_request_listener_socket.bind((os.environ['node_id'], front_end_request_listener_port))
+
     # start listeners
     print('Starting Listeners')
     threading.Thread(target=request_vote_rpc_listener, args=[request_vote_rpc_listener_socket]).start()
@@ -498,6 +517,7 @@ def main():
     threading.Thread(target=controller_rpc_listener, args=[controller_rpc_listener_socket]).start()
     threading.Thread(target=append_reply_rpc_listener, args=[append_reply_rpc_listener_socket]).start()
     threading.Thread(target=apply_commits_listener, args=[apply_commits_listener_socket]).start()
+    threading.Thread(target=front_end_request_listener, args=[front_end_request_listener_socket]).start()
 
     # sleep for some time to let the listeners start
     time.sleep(1)
