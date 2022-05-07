@@ -58,9 +58,9 @@ send_msg()
 
 time.sleep(.5)
 
-target = 'Node3'
-msg['request'] = 'SHUTDOWN'
-send_msg()
+# target = 'Node3'
+# msg['request'] = 'SHUTDOWN'
+# send_msg()
 
 time.sleep(.5)
 
@@ -103,9 +103,9 @@ time.sleep(.5)
 msg['request'] = "RETRIEVE"
 send_msg()
 
-target = 'Node3'
-msg['request'] = "CONVERT_FOLLOWER"
-send_msg()
+# target = 'Node3'
+# msg['request'] = "CONVERT_FOLLOWER"
+# send_msg()
 
 while True:  # to keep the listener alive
     pass

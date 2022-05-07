@@ -206,22 +206,22 @@ services:
     networks:
       - backends_connector_network
 
-#  frontend:
-#    build:
-#      context: ../../dsfrontend/
-#    volumes:
-#      - .:/frontend
-#    ports:
-#      - "3000:3000"
-#    depends_on:
-#      - node1
-#      - node2
-#      - node3
-#      - node4
-#      - node5
-#    networks:
-#      - backends_connector_network
-##      - frontend_backend_network
+  frontend:
+    build:
+      context: ../../dsfrontend/
+    volumes:
+      - .:/frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - node1
+      - node2
+      - node3
+      - node4
+      - node5
+    networks:
+      - backends_connector_network
+#      - frontend_backend_network
 
 #volumes:
 #  pg_volume:  # volume for pg_db

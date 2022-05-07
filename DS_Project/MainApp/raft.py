@@ -107,11 +107,6 @@ def append_entry_rpc(node: str):
         prev_log_term = obj.term
     except ObjectDoesNotExist:
         prev_log_term = 0
-    # if node == 'Node3':
-    #     if entry is not None:
-    #         print('append_rpc:', next_index, prev_log_index, entry.index, entry.key)
-    #     else:
-    #         print('append_rpc:', next_index, prev_log_index)
     msg = {
         'term': current_term,
         'leader_id': os.environ['node_id'],
@@ -140,9 +135,6 @@ def append_entry_rpc_listener(sock: socket.socket):
         timeout_timer.start()  # restart timeout_timer with different timeout_interval
         append_entry = json.loads(msg.decode('utf-8'))  # decoded msg
         if append_entry['entry'] is not None:  # skip log replication if heartbeat
-            if os.environ['node_id'] == 'Node3':
-                print('here', index, commit_index, append_entry['prev_log_index'],
-                      append_entry['entry']['index'], append_entry['entry']['key'])
             if append_entry['term'] < current_term or not log_consistency_check(append_entry):
                 append_reply_rpc(append_entry['leader_id'], success=False)
             else:
@@ -195,9 +187,6 @@ def log_consistency_check(append_entry: dict):
             each_log.delete()
             index -= 1
         return False
-    # do not log bad entries
-    # if index-1 > append_entry['entry']['index']:
-    #     return True
     # if log is consistent and if logs can be pushed, push the new log
     models.Logs.objects.create(
         index=index,
@@ -239,11 +228,9 @@ def append_reply_rpc_listener(sock: socket.socket):
                 match_index_counter[value] += 1
             commit_index = max(match_index_counter, key=lambda _: match_index_counter[_])
             udp_send(target=(os.environ['node_id'], apply_commits_listener_port), msg={'dummy': 'dummy'})
-            print('got true', next_index, match_index)
         else:
             next_index[append_reply['follower_id']] -= 1
             next_index[append_reply['follower_id']] = max(1, next_index[append_reply['follower_id']])  # bound
-            print('got false', next_index)
 
 
 def request_vote_rpc(node: str):
